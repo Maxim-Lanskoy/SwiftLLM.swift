@@ -1,3 +1,6 @@
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import Foundation
 import llama
 
@@ -40,7 +43,7 @@ open class LLM: ObservableObject {
     public var historyLimit: Int
     public var path: [CChar]
     
-    @Published public private(set) var output = ""    
+    public private(set) var output = ""
     @MainActor public func setOutput(to newOutput: consuming String) {
         output = newOutput
     }
@@ -74,7 +77,7 @@ open class LLM: ObservableObject {
 #endif
         let model = llama_load_model_from_file(self.path, modelParams)!
         params = llama_context_default_params()
-        let processorCount = UInt32(ProcessInfo().processorCount)
+        let processorCount = UInt32(sysconf(Int32(_SC_NPROCESSORS_ONLN)))
         self.maxTokenCount = Int(min(maxTokenCount, llama_n_ctx_train(model)))
         params.seed = seed
         params.n_ctx = UInt32(self.maxTokenCount)
@@ -675,7 +678,6 @@ extension URL {
         return data
     }
     fileprivate func downloadData(to destination: URL, _ updateProgress: @escaping (Double) -> Void) async throws {
-        var observation: NSKeyValueObservation!
         let url: URL = try await withCheckedThrowingContinuation { continuation in
             let task = URLSession.shared.downloadTask(with: self) { url, response, error in
                 if let error { return continuation.resume(throwing: error) }
@@ -684,12 +686,8 @@ extension URL {
                 guard statusCode / 100 == 2 else { return continuation.resume(throwing: HuggingFaceError.network(statusCode: statusCode)) }
                 continuation.resume(returning: url)
             }
-            observation = task.progress.observe(\.fractionCompleted) { progress, _ in
-                updateProgress(progress.fractionCompleted)
-            }
             task.resume()
         }
-        _ = observation
         try FileManager.default.moveItem(at: url, to: destination)
     }
 }
