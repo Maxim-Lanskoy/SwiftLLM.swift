@@ -12,7 +12,7 @@ public typealias Chat = (role: Role, content: String)
     static public let shared = InferenceActor()
 }
 
-open class LLM: ObservableObject {
+open class LLM {
     public var model: Model
     public var history: [Chat]
     public var preprocess: (_ input: String, _ history: [Chat]) -> String = { input, _ in return input }
@@ -672,10 +672,18 @@ extension URL {
     }
     fileprivate var exists: Bool { FileManager.default.fileExists(atPath: path) }
     fileprivate func getData() async throws -> Data {
-        let (data, response) = try await URLSession.shared.data(from: self)
-        let statusCode = (response as! HTTPURLResponse).statusCode
-        guard statusCode / 100 == 2 else { throw HuggingFaceError.network(statusCode: statusCode) }
-        return data
+        return try await withCheckedThrowingContinuation { continuation in
+            let task = URLSession.shared.dataTask(with: self) { data, response, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                } else if let data = data, let response = response as? HTTPURLResponse, response.statusCode / 100 == 2 {
+                    continuation.resume(returning: data)
+                } else {
+                    continuation.resume(throwing: URLError(.badServerResponse))
+                }
+            }
+            task.resume()
+        }
     }
     fileprivate func downloadData(to destination: URL, _ updateProgress: @escaping (Double) -> Void) async throws {
         let url: URL = try await withCheckedThrowingContinuation { continuation in
